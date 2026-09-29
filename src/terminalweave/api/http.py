@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from terminalweave.api.service import TerminalService
+from terminalweave.core.serialization import to_primitive
 
 class Handler(BaseHTTPRequestHandler):
     service = TerminalService()
@@ -15,10 +16,16 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.path == '/health':
-            self._reply(200, self.service.health())
-        else:
-            self._reply(404, {'error': 'not_found'})
+        try:
+            if self.path == '/health':
+                self._reply(200, self.service.health())
+            elif self.path.startswith('/billing/settlements/'):
+                settlement_id = self.path.rsplit('/', 1)[-1]
+                self._reply(200, to_primitive(self.service.settlement.get_settlement(settlement_id)))
+            else:
+                self._reply(404, {'error': 'not_found'})
+        except Exception as exc:
+            self._reply(422, {'error': exc.__class__.__name__, 'message': str(exc)})
 
     def do_POST(self):
         try:
@@ -32,6 +39,14 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.service.tide_clearance(payload)
             elif self.path == '/billing/demurrage':
                 result = self.service.demurrage_quote(payload)
+            elif self.path == '/billing/rates':
+                result = self.service.publish_rate(payload)
+            elif self.path == '/billing/discounts':
+                result = self.service.add_discount_rule(payload)
+            elif self.path == '/billing/credit-accounts':
+                result = self.service.open_credit_account(payload)
+            elif self.path == '/billing/settle':
+                result = self.service.settle_business(payload)
             else:
                 self._reply(404, {'error': 'not_found'})
                 return
